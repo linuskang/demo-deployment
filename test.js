@@ -12,4 +12,4 @@ if (result === 'Hello, World!') {
   process.exit(1);
 }
 
-console.log('All tests passed!');
+console.log('All tests passed hooray!');
