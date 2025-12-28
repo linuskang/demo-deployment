@@ -1,0 +1,187 @@
+name: Production Deployment
+
+on:
+  push:
+    branches:
+      - main
+      - master  # Support both main and master branch names
+
+jobs:
+  deploy-to-production:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      deployments: write
+    
+    steps:
+      # Step 1: Checkout code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      # Step 2: Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      # Step 3: Install dependencies
+      - name: Install dependencies
+        run: |
+          echo "Installing dependencies..."
+          npm install
+      
+      # Step 4: Run tests
+      - name: Run tests
+        run: |
+          echo "Running tests..."
+          npm test
+      
+      # Step 5: Build application
+      - name: Build application
+        run: |
+          echo "Building application..."
+          npm run build
+      
+      # Step 6: Send Discord notification on success
+      - name: Send Discord notification
+        if: success()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          COMMIT_SHA="${{ github.sha }}"
+          COMMIT_SHORT_SHA="${COMMIT_SHA:0:7}"
+          COMMIT_MESSAGE="${{ github.event.head_commit.message }}"
+          COMMIT_AUTHOR="${{ github.event.head_commit.author.name }}"
+          REPO_NAME="${{ github.repository }}"
+          BRANCH_NAME="${{ github.ref_name }}"
+          TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          
+          # Build Discord message JSON safely using jq
+          DISCORD_MESSAGE=$(jq -n \
+            --arg repo "$REPO_NAME" \
+            --arg branch "$BRANCH_NAME" \
+            --arg commit "$COMMIT_SHORT_SHA" \
+            --arg author "$COMMIT_AUTHOR" \
+            --arg message "$COMMIT_MESSAGE" \
+            --arg timestamp "$TIMESTAMP" \
+            '{
+              embeds: [{
+                title: "🚀 Deployment to Production",
+                description: "Successfully deployed to production server!",
+                color: 3066993,
+                fields: [
+                  {
+                    name: "Repository",
+                    value: $repo,
+                    inline: true
+                  },
+                  {
+                    name: "Branch",
+                    value: $branch,
+                    inline: true
+                  },
+                  {
+                    name: "Commit",
+                    value: $commit,
+                    inline: true
+                  },
+                  {
+                    name: "Author",
+                    value: $author,
+                    inline: true
+                  },
+                  {
+                    name: "Commit Message",
+                    value: $message,
+                    inline: false
+                  }
+                ],
+                timestamp: $timestamp
+              }]
+            }')
+          
+          if [ -n "$DISCORD_WEBHOOK" ]; then
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                 -H "Content-Type: application/json" \
+                 -d "$DISCORD_MESSAGE" \
+                 "$DISCORD_WEBHOOK")
+            if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+              echo "Discord notification sent successfully! (HTTP $HTTP_STATUS)"
+            else
+              echo "Error: Failed to send Discord notification. HTTP status: $HTTP_STATUS"
+              exit 1
+            fi
+          else
+            echo "Error: DISCORD_WEBHOOK_URL secret not set. Failing Discord notification step."
+            exit 1
+          fi
+      
+      # Step 7: Create GitHub deployment
+      - name: Create GitHub deployment
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          COMMIT_SHA="${{ github.sha }}"
+          DEPLOYMENT_NAME="Production"
+          REPO="${{ github.repository }}"
+          REF="${{ github.ref }}"
+          
+          echo "Creating deployment: $DEPLOYMENT_NAME"
+          
+          # Create deployment
+          DEPLOYMENT_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$REPO/deployments" \
+            -d "{
+              \"ref\": \"$REF\",
+              \"environment\": \"$DEPLOYMENT_NAME\",
+              \"description\": \"Deployment to production\",
+              \"auto_merge\": false,
+              \"required_contexts\": []
+            }")
+          
+          HTTP_CODE=$(echo "$DEPLOYMENT_RESPONSE" | tail -n1)
+          RESPONSE_BODY=$(echo "$DEPLOYMENT_RESPONSE" | sed '$d')
+          
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            DEPLOYMENT_ID=$(echo "$RESPONSE_BODY" | jq -r '.id')
+            
+            if [ "$DEPLOYMENT_ID" != "null" ] && [ -n "$DEPLOYMENT_ID" ]; then
+              echo "Deployment created with ID: $DEPLOYMENT_ID"
+              
+              # Create deployment status
+              STATUS_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+                -H "Authorization: Bearer $GITHUB_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "https://api.github.com/repos/$REPO/deployments/$DEPLOYMENT_ID/statuses" \
+                -d "{
+                  \"state\": \"success\",
+                  \"description\": \"Deployment completed successfully\",
+                  \"environment\": \"$DEPLOYMENT_NAME\"
+                }")
+              
+              STATUS_HTTP_CODE=$(echo "$STATUS_RESPONSE" | tail -n1)
+              
+              if [ "$STATUS_HTTP_CODE" -ge 200 ] && [ "$STATUS_HTTP_CODE" -lt 300 ]; then
+                echo "Deployment status updated to success!"
+                echo "Deployment name: $DEPLOYMENT_NAME"
+              else
+                echo "Error: Failed to update deployment status (HTTP $STATUS_HTTP_CODE)"
+                echo "$STATUS_RESPONSE" | sed '$d' | jq .
+                exit 1
+              fi
+            else
+              echo "Error: Invalid deployment ID in response"
+              echo "$RESPONSE_BODY" | jq .
+              exit 1
+            fi
+          else
+            echo "Error creating deployment (HTTP $HTTP_CODE)"
+            echo "$RESPONSE_BODY" | jq .
+            exit 1
+          fi

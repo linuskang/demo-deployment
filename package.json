@@ -1,0 +1,14 @@
+{
+  "name": "demo-deployment",
+  "version": "1.0.0",
+  "description": "Demo deployment with GitHub Actions",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test.js",
+    "build": "echo 'Build completed successfully!'",
+    "start": "node index.js"
+  },
+  "keywords": ["demo", "deployment"],
+  "author": "",
+  "license": "MIT"
+}
