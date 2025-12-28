@@ -1,12 +1,13 @@
-name: CI/CD with Discord Notification and Deployment
+name: Production Deployment
 
 on:
   push:
     branches:
-      - '**'  # Run on every push to any branch
+      - main
+      - master  # Support both main and master branch names
 
 jobs:
-  build-test-deploy:
+  deploy-to-production:
     runs-on: ubuntu-latest
     
     permissions:

@@ -4,16 +4,33 @@ A demonstration repository showcasing GitHub Actions CI/CD with Discord notifica
 
 ## Features
 
-- ✅ Automated CI/CD pipeline that runs on every commit
+- ✅ Separate CI workflow for pull requests
+- ✅ Automated deployment workflow for main/master branch
 - 🧪 Runs tests and builds the application
-- 💬 Sends Discord notifications on successful deployments
+- 💬 Sends Discord notifications on successful production deployments
 - 🚀 Creates GitHub deployments with name "Production-{commit_id}"
+
+## Workflows
+
+This repository uses two separate GitHub Actions workflows:
+
+### 1. CI Workflow (`ci.yml`)
+- **Trigger**: Runs on pull request events
+- **Purpose**: Validates code changes before merging
+- **Steps**: Checkout → Setup → Install → Test → Build
+- **No notifications**: This is for CI checks only
+
+### 2. Deployment Workflow (`deployment.yml`)
+- **Trigger**: Runs on push to `main` or `master` branch
+- **Purpose**: Deploys to production (mock deployment to Discord)
+- **Steps**: Checkout → Setup → Install → Test → Build → Discord notification → GitHub deployment
+- **Notifications**: Sends Discord message on successful deployment
 
 ## Setup Instructions
 
 ### 1. Configure Discord Webhook
 
-To receive Discord notifications:
+To receive Discord notifications for production deployments:
 
 1. Go to your Discord server settings
 2. Navigate to Integrations → Webhooks
@@ -25,19 +42,7 @@ To receive Discord notifications:
 
 ### 2. GitHub Token
 
-The workflow uses the built-in `GITHUB_TOKEN` which is automatically provided by GitHub Actions. No additional configuration needed for deployment creation.
-
-### 3. Workflow Triggers
-
-The workflow automatically runs on every push to any branch. You can modify the trigger in `.github/workflows/deploy.yml`:
-
-```yaml
-on:
-  push:
-    branches:
-      - '**'  # Runs on all branches
-      # - 'main'  # Uncomment to run only on main branch
-```
+The deployment workflow uses the built-in `GITHUB_TOKEN` which is automatically provided by GitHub Actions. No additional configuration needed for deployment creation.
 
 ## Project Structure
 
@@ -45,14 +50,25 @@ on:
 demo-deployment/
 ├── .github/
 │   └── workflows/
-│       └── deploy.yml       # GitHub Actions workflow
-├── index.js                 # Demo application
-├── test.js                  # Test file
-├── package.json             # Node.js package configuration
-└── README.md               # This file
+│       ├── ci.yml              # CI checks for pull requests
+│       └── deployment.yml      # Production deployment workflow
+├── index.js                    # Demo application
+├── test.js                     # Test file
+├── package.json                # Node.js package configuration
+└── README.md                   # This file
 ```
 
-## Workflow Steps
+## Workflow Details
+
+### CI Workflow (Pull Requests)
+
+1. **Checkout repository** - Gets the latest code
+2. **Setup Node.js** - Installs Node.js environment
+3. **Install dependencies** - Runs npm install
+4. **Run tests** - Executes test suite
+5. **Build application** - Builds the application
+
+### Deployment Workflow (Main Branch)
 
 1. **Checkout repository** - Gets the latest code
 2. **Setup Node.js** - Installs Node.js environment
@@ -82,7 +98,7 @@ npm run build
 
 ## Discord Notification Format
 
-The Discord bot sends a rich embed message containing:
+When code is merged to the main branch, the Discord bot sends a rich embed message containing:
 - Repository name
 - Branch name
 - Commit SHA (short)
@@ -92,7 +108,7 @@ The Discord bot sends a rich embed message containing:
 
 ## GitHub Deployment
 
-Each successful deployment creates a GitHub deployment with:
+Each successful production deployment creates a GitHub deployment with:
 - Environment name: `Production-{short_commit_sha}`
 - Status: Success
 - Description: Deployment details
